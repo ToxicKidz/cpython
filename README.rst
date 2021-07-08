@@ -1,7 +1,6 @@
 This is a fork of CPython with support ``yield from`` in async functions and a new ``async yield from`` instruction
 
 TODO:
-   * Add support for return in async generators (requires the StopAsyncIteration exception to be changed)
    * Add ``AsyncGenerator.ag_yieldfrom``
 
 .. code-block:: python
