@@ -1,3 +1,32 @@
+This is a fork of CPython with support ``yield from`` in async functions and a new ``async yield from`` instruction
+
+.. code-block:: python
+
+   Python 3.11.0a0 (heads/main-dirty:4823d9a512, Jul  7 2021, 20:11:01) [GCC 9.3.0] on linux
+   Type "help", "copyright", "credits" or "license" for more information.
+   >>> import asyncio
+   >>> async def a():
+   ...     yield from range(10)
+   ... 
+   >>> async def b():
+   ...     async yield from a()
+   ... 
+   >>> async def c():
+   ...     async for y in b(): print(y)
+   ... 
+   >>> asyncio.run(c())  
+   0
+   1
+   2
+   3
+   4
+   5
+   6
+   7
+   8
+   9
+
+
 This is Python version 3.11.0 alpha 0
 =====================================
 
