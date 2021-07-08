@@ -356,6 +356,34 @@ _PyGen_yf(PyGenObject *gen)
     return yf;
 }
 
+
+PyObject *
+_PyAsyncGen_ayf(PyAsyncGenObject *gen){
+    PyObject *ayf = NULL;
+    PyFrameObject *f = gen->ag_frame;
+
+    if (f) {
+        PyObject *bytecode = gen->ag_code->co_code;
+        unsigned char *code = (unsigned char *)PyBytes_AS_STRING(bytecode);
+
+        if (f->f_lasti < 0) {
+            /* Return immediately if the frame didn't start yet. ASYNC_YIELD_FROM
+               always come after LOAD_CONST: a code object should not start
+               with ASYNC_YIELD_FROM */
+            assert(code[0] != ASYNC_YIELD_FROM);
+            return NULL;
+        }
+
+        if (code[(f->f_lasti+1)*sizeof(_Py_CODEUNIT)] != ASYNC_YIELD_FROM)
+            return NULL;
+        assert(f->f_stackdepth > 0);
+        ayf = f->f_valuestack[f->f_stackdepth-1];
+        Py_INCREF(ayf);
+    }
+
+    return ayf;
+}
+
 static PyObject *
 gen_close(PyGenObject *gen, PyObject *args)
 {
@@ -721,6 +749,15 @@ gen_getyieldfrom(PyGenObject *gen, void *Py_UNUSED(ignored))
     if (yf == NULL)
         Py_RETURN_NONE;
     return yf;
+}
+
+static PyObject *
+async_gen_getasyncyieldfrom(PyAsyncGenObject *gen, void *Py_UNUSED(ignored))
+{
+    PyObject *ayf = _PyAsyncGen_ayf(gen);
+    if (ayf == NULL)
+        Py_RETURN_NONE;
+    return ayf;
 }
 
 
@@ -1438,6 +1475,9 @@ static PyGetSetDef async_gen_getsetlist[] = {
      PyDoc_STR("qualified name of the async generator")},
     {"ag_await", (getter)coro_get_cr_await, NULL,
      PyDoc_STR("object being awaited on, or None")},
+    {"ag_asyncyieldfrom", (getter)async_gen_getasyncyieldfrom, NULL,
+    PyDoc_STR("object being iterated by async yield from, or None")},
+
     {NULL} /* Sentinel */
 };
 
