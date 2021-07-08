@@ -1079,6 +1079,7 @@ stack_effect(int opcode, int oparg, int jump)
         case YIELD_VALUE:
             return 0;
         case YIELD_FROM:
+        case ASYNC_YIELD_FROM:
             return -1;
         case POP_BLOCK:
             return 0;
@@ -1228,6 +1229,7 @@ stack_effect(int opcode, int oparg, int jump)
         case GET_ANEXT:
             return 1;
         case GET_YIELD_FROM_ITER:
+        case GET_ASYNC_YIELD_FROM_ITER:
             return 0;
         case END_ASYNC_FOR:
             return -4;
@@ -5385,13 +5387,27 @@ compiler_visit_expr1(struct compiler *c, expr_ty e)
         if (c->u->u_ste->ste_type != FunctionBlock)
             return compiler_error(c, "'yield' outside function");
 
+        /*
         if (c->u->u_scope_type == COMPILER_SCOPE_ASYNC_FUNCTION)
             return compiler_error(c, "'yield from' inside async function");
+        */
 
         VISIT(c, expr, e->v.YieldFrom.value);
         ADDOP(c, GET_YIELD_FROM_ITER);
         ADDOP_LOAD_CONST(c, Py_None);
         ADDOP(c, YIELD_FROM);
+        break;
+    case AsyncYieldFrom_kind:
+        if (c->u->u_ste->ste_type != FunctionBlock)
+            return compiler_error(c, "'yield' outside function");
+
+        if (c->u->u_scope_type != COMPILER_SCOPE_ASYNC_FUNCTION)
+            return compiler_error(c, "'async yield from' outside async function");
+
+        VISIT(c, expr, e->v.AsyncYieldFrom.value);
+        ADDOP(c, GET_ASYNC_YIELD_FROM_ITER);
+        ADDOP_LOAD_CONST(c, Py_None);
+        ADDOP(c, ASYNC_YIELD_FROM);
         break;
     case Await_kind:
         if (!IS_TOP_LEVEL_AWAIT(c)){

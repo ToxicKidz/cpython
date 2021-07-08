@@ -1653,6 +1653,7 @@ symtable_visit_expr(struct symtable *st, expr_ty e)
         st->st_cur->ste_generator = 1;
         break;
     case YieldFrom_kind:
+    case AsyncYieldFrom_kind:
         if (!symtable_raise_if_annotation_block(st, "yield expression", e)) {
             VISIT_QUIT(st, 0);
         }

@@ -777,6 +777,7 @@ astfold_expr(expr_ty node_, PyArena *ctx_, _PyASTOptimizeState *state)
         CALL_OPT(astfold_expr, expr_ty, node_->v.Yield.value);
         break;
     case YieldFrom_kind:
+    case AsyncYieldFrom_kind:
         CALL(astfold_expr, expr_ty, node_->v.YieldFrom.value);
         break;
     case Compare_kind:

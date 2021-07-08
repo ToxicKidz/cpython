@@ -287,6 +287,7 @@ validate_expr(struct validator *state, expr_ty exp, expr_context_ty ctx)
         ret = !exp->v.Yield.value || validate_expr(state, exp->v.Yield.value, Load);
         break;
     case YieldFrom_kind:
+    case AsyncYieldFrom_kind:
         ret = validate_expr(state, exp->v.YieldFrom.value, Load);
         break;
     case Await_kind:

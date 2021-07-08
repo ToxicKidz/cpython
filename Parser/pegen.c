@@ -168,6 +168,7 @@ _PyPegen_get_expr_name(expr_ty e)
             return "generator expression";
         case Yield_kind:
         case YieldFrom_kind:
+        case AsyncYieldFrom_kind:
             return "yield expression";
         case Await_kind:
             return "await expression";

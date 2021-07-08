@@ -37,6 +37,7 @@ void _PyAST_Fini(PyInterpreterState *interp)
     Py_CLEAR(state->AsyncFor_type);
     Py_CLEAR(state->AsyncFunctionDef_type);
     Py_CLEAR(state->AsyncWith_type);
+    Py_CLEAR(state->AsyncYieldFrom_type);
     Py_CLEAR(state->Attribute_type);
     Py_CLEAR(state->AugAssign_type);
     Py_CLEAR(state->Await_type);
@@ -571,6 +572,9 @@ static const char * const Yield_fields[]={
     "value",
 };
 static const char * const YieldFrom_fields[]={
+    "value",
+};
+static const char * const AsyncYieldFrom_fields[]={
     "value",
 };
 static const char * const Compare_fields[]={
@@ -1310,6 +1314,7 @@ init_types(struct ast_state *state)
         "     | Await(expr value)\n"
         "     | Yield(expr? value)\n"
         "     | YieldFrom(expr value)\n"
+        "     | AsyncYieldFrom(expr value)\n"
         "     | Compare(expr left, cmpop* ops, expr* comparators)\n"
         "     | Call(expr func, expr* args, keyword* keywords)\n"
         "     | FormattedValue(expr value, int? conversion, expr? format_spec)\n"
@@ -1391,6 +1396,11 @@ init_types(struct ast_state *state)
                                       YieldFrom_fields, 1,
         "YieldFrom(expr value)");
     if (!state->YieldFrom_type) return 0;
+    state->AsyncYieldFrom_type = make_type(state, "AsyncYieldFrom",
+                                           state->expr_type,
+                                           AsyncYieldFrom_fields, 1,
+        "AsyncYieldFrom(expr value)");
+    if (!state->AsyncYieldFrom_type) return 0;
     state->Compare_type = make_type(state, "Compare", state->expr_type,
                                     Compare_fields, 3,
         "Compare(expr left, cmpop* ops, expr* comparators)");
@@ -2917,6 +2927,28 @@ _PyAST_YieldFrom(expr_ty value, int lineno, int col_offset, int end_lineno, int
 }
 
 expr_ty
+_PyAST_AsyncYieldFrom(expr_ty value, int lineno, int col_offset, int
+                      end_lineno, int end_col_offset, PyArena *arena)
+{
+    expr_ty p;
+    if (!value) {
+        PyErr_SetString(PyExc_ValueError,
+                        "field 'value' is required for AsyncYieldFrom");
+        return NULL;
+    }
+    p = (expr_ty)_PyArena_Malloc(arena, sizeof(*p));
+    if (!p)
+        return NULL;
+    p->kind = AsyncYieldFrom_kind;
+    p->v.AsyncYieldFrom.value = value;
+    p->lineno = lineno;
+    p->col_offset = col_offset;
+    p->end_lineno = end_lineno;
+    p->end_col_offset = end_col_offset;
+    return p;
+}
+
+expr_ty
 _PyAST_Compare(expr_ty left, asdl_int_seq * ops, asdl_expr_seq * comparators,
                int lineno, int col_offset, int end_lineno, int end_col_offset,
                PyArena *arena)
@@ -4401,6 +4433,16 @@ ast2obj_expr(struct ast_state *state, void* _o)
         result = PyType_GenericNew(tp, NULL, NULL);
         if (!result) goto failed;
         value = ast2obj_expr(state, o->v.YieldFrom.value);
+        if (!value) goto failed;
+        if (PyObject_SetAttr(result, state->value, value) == -1)
+            goto failed;
+        Py_DECREF(value);
+        break;
+    case AsyncYieldFrom_kind:
+        tp = (PyTypeObject *)state->AsyncYieldFrom_type;
+        result = PyType_GenericNew(tp, NULL, NULL);
+        if (!result) goto failed;
+        value = ast2obj_expr(state, o->v.AsyncYieldFrom.value);
         if (!value) goto failed;
         if (PyObject_SetAttr(result, state->value, value) == -1)
             goto failed;
@@ -8781,6 +8823,36 @@ obj2ast_expr(struct ast_state *state, PyObject* obj, expr_ty* out, PyArena*
         if (*out == NULL) goto failed;
         return 0;
     }
+    tp = state->AsyncYieldFrom_type;
+    isinstance = PyObject_IsInstance(obj, tp);
+    if (isinstance == -1) {
+        return 1;
+    }
+    if (isinstance) {
+        expr_ty value;
+
+        if (_PyObject_LookupAttr(obj, state->value, &tmp) < 0) {
+            return 1;
+        }
+        if (tmp == NULL) {
+            PyErr_SetString(PyExc_TypeError, "required field \"value\" missing from AsyncYieldFrom");
+            return 1;
+        }
+        else {
+            int res;
+            if (Py_EnterRecursiveCall(" while traversing 'AsyncYieldFrom' node")) {
+                goto failed;
+            }
+            res = obj2ast_expr(state, tmp, &value, arena);
+            Py_LeaveRecursiveCall();
+            if (res != 0) goto failed;
+            Py_CLEAR(tmp);
+        }
+        *out = _PyAST_AsyncYieldFrom(value, lineno, col_offset, end_lineno,
+                                     end_col_offset, arena);
+        if (*out == NULL) goto failed;
+        return 0;
+    }
     tp = state->Compare_type;
     isinstance = PyObject_IsInstance(obj, tp);
     if (isinstance == -1) {
@@ -11761,6 +11833,10 @@ astmodule_exec(PyObject *m)
         return -1;
     }
     if (PyModule_AddObjectRef(m, "YieldFrom", state->YieldFrom_type) < 0) {
+        return -1;
+    }
+    if (PyModule_AddObjectRef(m, "AsyncYieldFrom", state->AsyncYieldFrom_type)
+        < 0) {
         return -1;
     }
     if (PyModule_AddObjectRef(m, "Compare", state->Compare_type) < 0) {

@@ -1571,7 +1571,8 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
         if (_Py_atomic_load_relaxed(eval_breaker)) {
             opcode = _Py_OPCODE(*next_instr);
             if (opcode != BEFORE_ASYNC_WITH &&
-                opcode != YIELD_FROM) {
+                opcode != YIELD_FROM &&
+                opcode != ASYNC_YIELD_FROM /* I'm unsure is this is correct... */) {
                 /* Few cases where we skip running signal handlers and other
                    pending calls:
                    - If we're about to enter the 'with:'. It will prevent
@@ -2428,6 +2429,77 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 retval = NULL;
                 DISPATCH();
             }
+            assert (gen_status == PYGEN_NEXT);
+
+            if (co->co_flags & CO_ASYNC_GENERATOR) {
+                PyObject *w = _PyAsyncGenValueWrapperNew(retval);
+                Py_DECREF(retval);
+                if (w == NULL) {
+                    retval = NULL;
+                    goto error;
+                }
+                retval = w;
+            }
+
+            /* receiver remains on stack, retval is value to be yielded */
+            /* and repeat... */
+            assert(f->f_lasti > 0);
+            f->f_lasti -= 1;
+            f->f_state = FRAME_SUSPENDED;
+            f->f_stackdepth = (int)(stack_pointer - f->f_valuestack);
+            goto exiting;
+        }
+
+        case TARGET(ASYNC_YIELD_FROM): {
+            PyObject *v = POP();
+            PyObject *receiver = TOP();
+            PySendResult gen_status;
+            if (tstate->c_tracefunc == NULL) {
+                gen_status = PyIter_Send(receiver, v, &retval);
+            } else {
+                _Py_IDENTIFIER(asend);
+                if (Py_IsNone(v) && PyAiter_Check(receiver)) {
+                    retval = Py_TYPE(receiver)->tp_as_async->am_anext(receiver);
+                }
+                else {
+                    retval = _PyObject_CallMethodIdOneArg(receiver, &PyId_asend, v);
+                }
+                if (retval == NULL) {
+                    if (tstate->c_tracefunc != NULL
+                            && _PyErr_ExceptionMatches(tstate, PyExc_StopAsyncIteration))
+                        call_exc_trace(tstate->c_tracefunc, tstate->c_traceobj, tstate, f);
+
+                    if (PyErr_ExceptionMatches(PyExc_StopAsyncIteration)) {
+                        _PyErr_Clear(tstate);
+
+                        gen_status = PYGEN_RETURN;
+                        retval = Py_None;
+                    }
+                    /* if (_PyGen_FetchStopIterationValue(&retval) == 0) {
+                        gen_status = PYGEN_RETURN;
+                    }
+                    else {
+                        gen_status = PYGEN_ERROR;
+                    } */
+                }
+                else {
+                    gen_status = PYGEN_NEXT;
+                }
+            }
+            Py_DECREF(v);
+            if (gen_status == PYGEN_ERROR) {
+                assert (retval == NULL);
+                goto error;
+            }
+            if (gen_status == PYGEN_RETURN) {
+                assert (retval != NULL);
+
+                Py_DECREF(receiver);
+                SET_TOP(retval);
+                retval = NULL;
+                DISPATCH();
+            }
+
             assert (gen_status == PYGEN_NEXT);
             /* receiver remains on stack, retval is value to be yielded */
             /* and repeat... */
@@ -3806,6 +3878,20 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                 Py_DECREF(iterable);
                 SET_TOP(iter);
                 if (iter == NULL)
+                    goto error;
+            }
+            PREDICT(LOAD_CONST);
+            DISPATCH();
+        }
+
+        case TARGET(GET_ASYNC_YIELD_FROM_ITER): {
+            PyObject *aiterable = TOP();
+            PyObject *aiter;
+            if (!PyAsyncGen_CheckExact(aiterable)) {
+                aiter = PyObject_GetAiter(aiterable);
+                Py_DECREF(aiterable);
+                SET_TOP(aiter);
+                if (aiter == NULL)
                     goto error;
             }
             PREDICT(LOAD_CONST);
