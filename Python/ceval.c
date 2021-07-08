@@ -2475,12 +2475,12 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                         gen_status = PYGEN_RETURN;
                         retval = Py_None;
                     }
-                    /* if (_PyGen_FetchStopIterationValue(&retval) == 0) {
+                    if (_PyGen_FetchStopAsyncIterationValue(&retval) == 0) {
                         gen_status = PYGEN_RETURN;
                     }
                     else {
                         gen_status = PYGEN_ERROR;
-                    } */
+                    }
                 }
                 else {
                     gen_status = PYGEN_NEXT;

@@ -265,8 +265,12 @@ gen_send_ex(PyGenObject *gen, PyObject *arg, int exc, int closing)
     PyObject *result;
     if (gen_send_ex2(gen, arg, &result, exc, closing) == PYGEN_RETURN) {
         if (PyAsyncGen_CheckExact(gen)) {
-            assert(result == Py_None);
-            PyErr_SetNone(PyExc_StopAsyncIteration);
+            if (result == Py_None){
+                PyErr_SetNone(PyExc_StopAsyncIteration);
+            }
+            else {
+                _PyGen_SetStopAsyncIterationValue(result);
+            }
         }
         else if (result == Py_None) {
             PyErr_SetNone(PyExc_StopIteration);
@@ -1255,6 +1259,84 @@ typedef struct _PyAsyncGenWrappedValue {
 #define PyAsyncGenASend_CheckExact(o) \
                     Py_IS_TYPE(o, &_PyAsyncGenASend_Type)
 
+int
+_PyGen_FetchStopAsyncIterationValue(PyObject **pvalue)
+{
+    PyObject *et, *ev, *tb;
+    PyObject *value = NULL;
+
+    if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
+        PyErr_Fetch(&et, &ev, &tb);
+        if (ev) {
+            /* exception will usually be normalised already */
+            if (PyObject_TypeCheck(ev, (PyTypeObject *) et)) {
+                value = ((PyStopAsyncIterationObject *)ev)->value;
+                Py_INCREF(value);
+                Py_DECREF(ev);
+            } else if (et == PyExc_StopAsyncIteration && !PyTuple_Check(ev)) {
+                /* Avoid normalisation and take ev as value.
+                 *
+                 * Normalization is required if the value is a tuple, in
+                 * that case the value of StopIteration would be set to
+                 * the first element of the tuple.
+                 *
+                 * (See _PyErr_CreateException code for details.)
+                 */
+                value = ev;
+            } else {
+                /* normalisation required */
+                PyErr_NormalizeException(&et, &ev, &tb);
+                if (!PyObject_TypeCheck(ev, (PyTypeObject *)PyExc_StopAsyncIteration)) {
+                    PyErr_Restore(et, ev, tb);
+                    return -1;
+                }
+                value = ((PyStopAsyncIterationObject *)ev)->value;
+                Py_INCREF(value);
+                Py_DECREF(ev);
+            }
+        }
+        Py_XDECREF(et);
+        Py_XDECREF(tb);
+    } else if (PyErr_Occurred()) {
+        return -1;
+    }
+    if (value == NULL) {
+        value = Py_None;
+        Py_INCREF(value);
+    }
+    *pvalue = value;
+    return 0;
+}
+
+int
+_PyGen_SetStopAsyncIterationValue(PyObject *value)
+{
+    PyObject *e;
+
+    if (value == NULL ||
+        (!PyTuple_Check(value) && !PyExceptionInstance_Check(value)))
+    {
+        /* Delay exception instantiation if we can */
+        PyErr_SetObject(PyExc_StopAsyncIteration, value);
+        return 0;
+    }
+    /* Construct an exception instance manually with
+     * PyObject_CallOneArg and pass it to PyErr_SetObject.
+     *
+     * We do this to handle a situation when "value" is a tuple, in which
+     * case PyErr_SetObject would set the value of StopIteration to
+     * the first element of the tuple.
+     *
+     * (See PyErr_SetObject/_PyErr_CreateException code for details.)
+     */
+    e = PyObject_CallOneArg(PyExc_StopAsyncIteration, value);
+    if (e == NULL) {
+        return -1;
+    }
+    PyErr_SetObject(PyExc_StopAsyncIteration, e);
+    Py_DECREF(e);
+    return 0;
+}
 
 static int
 async_gen_traverse(PyAsyncGenObject *gen, visitproc visit, void *arg)

@@ -3059,15 +3059,11 @@ compiler_return(struct compiler *c, stmt_ty s)
                         (s->v.Return.value->kind != Constant_kind));
     if (c->u->u_ste->ste_type != FunctionBlock)
         return compiler_error(c, "'return' outside function");
-    if (s->v.Return.value != NULL &&
-        c->u->u_ste->ste_coroutine && c->u->u_ste->ste_generator)
-    {
-            return compiler_error(
-                c, "'return' with value in async generator");
-    }
+
     if (preserve_tos) {
         VISIT(c, expr, s->v.Return.value);
     } else {
+
         /* Emit instruction with line number for return value */
         if (s->v.Return.value != NULL) {
             SET_LOC(c, s->v.Return.value);
