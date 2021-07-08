@@ -2469,12 +2469,6 @@ _PyEval_EvalFrameDefault(PyThreadState *tstate, PyFrameObject *f, int throwflag)
                             && _PyErr_ExceptionMatches(tstate, PyExc_StopAsyncIteration))
                         call_exc_trace(tstate->c_tracefunc, tstate->c_traceobj, tstate, f);
 
-                    if (PyErr_ExceptionMatches(PyExc_StopAsyncIteration)) {
-                        _PyErr_Clear(tstate);
-
-                        gen_status = PYGEN_RETURN;
-                        retval = Py_None;
-                    }
                     if (_PyGen_FetchStopAsyncIterationValue(&retval) == 0) {
                         gen_status = PYGEN_RETURN;
                     }
